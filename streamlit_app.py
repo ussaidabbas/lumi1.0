@@ -16,7 +16,7 @@ st.set_page_config(page_title="A place to think out loud", page_icon="🌿")
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. SETUP
 # ─────────────────────────────────────────────────────────────────────────────
-CHAT_MODEL   = "gemini-flash-latest"
+CHAT_MODEL   = "gemini-3.6-flash"
 SAFETY_MODEL = "gemini-flash-lite-latest"
 
 
@@ -37,7 +37,24 @@ def get_client():
 
 
 gclient = get_client()
-
+with st.sidebar:
+    st.subheader("Debug")
+    if st.button("Run diagnostic"):
+        k = _get_key() or ""
+        st.write(f"key length: {len(k)}, starts AIza: {k.startswith('AIza')}")
+        try:
+            names = [m.name.replace("models/", "") for m in gclient.models.list()]
+            st.write(f"models visible: {len(names)}")
+        except Exception as e:
+            st.error(f"list failed: {str(e)[:300]}")
+            names = []
+        for m in ["gemini-flash-latest", "gemini-flash-lite-latest",
+                  "gemini-3.6-flash", "gemini-3.1-flash-lite"]:
+            try:
+                r = gclient.models.generate_content(model=m, contents="hi")
+                st.success(f"✓ {m} → {(r.text or '')[:40]}")
+            except Exception as e:
+                st.error(f"✗ {m} → {type(e).__name__}: {str(e)[:250]}")
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. MODEL ADAPTER — the only code that knows about Gemini
 # ─────────────────────────────────────────────────────────────────────────────
