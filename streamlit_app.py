@@ -410,9 +410,24 @@ with st.expander("How this works"):
              "Anything suggesting crisis gets a fixed response with helpline "
              "numbers instead of a generated one.")
 
-st.divider()
+with st.sidebar:
+    st.subheader("Your data")
+    st.caption("This conversation lives only in your browser session.")
+    if st.button("Delete everything", type="primary", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.mem = {"facts": [], "summary": ""}
+        st.success("Deleted.")
+        st.rerun()
+    if st.session_state.messages:
+        st.download_button(
+            "Download my conversation",
+            json.dumps(st.session_state.messages, indent=2, ensure_ascii=False),
+            file_name=f"conversation_{datetime.datetime.now():%Y%m%d_%H%M}.json",
+            mime="application/json", use_container_width=True)
+
+    st.divider()
     st.subheader("About")
-    st.caption(f"Lumi runs on Llama 3.3 via Groq. It's a listening companion — "
+    st.caption("Lumi runs on Llama 3.3 via Groq. It's a listening companion — "
                "not a medical service.")
 
     st.divider()
@@ -426,18 +441,6 @@ st.divider()
     st.caption("Every message passes through a two-tier risk classifier. Messages "
                "suggesting crisis are answered with a fixed, reviewed script and "
                "helpline numbers — the language model is bypassed entirely.")
-    if st.button("Delete everything", type="primary", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.mem = {"facts": [], "summary": ""}
-        st.success("Deleted.")
-        st.rerun()
-    if st.session_state.messages:
-        st.download_button(
-            "Download my conversation",
-            json.dumps(st.session_state.messages, indent=2, ensure_ascii=False),
-            file_name=f"conversation_{datetime.datetime.now():%Y%m%d_%H%M}.json",
-            mime="application/json", use_container_width=True)
-
 for m in st.session_state.messages:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
