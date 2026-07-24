@@ -405,10 +405,27 @@ if not st.session_state.consented:
 st.title("LUMI AI — AI That Listens, Supports, and Cares. ")
 st.caption("A space to think out loud. Not a therapist — just somewhere to start.")
 st.warning("**Need someone now?** " + " · ".join(RESOURCES))
+with st.expander("How this works"):
+    st.write("Every message is classified for risk before it reaches the model. "
+             "Anything suggesting crisis gets a fixed response with helpline "
+             "numbers instead of a generated one.")
 
-with st.sidebar:
-    st.subheader("Your data")
-    st.caption("This conversation lives only in your browser session.")
+st.divider()
+    st.subheader("About")
+    st.caption(f"Lumi runs on Llama 3.3 via Groq. It's a listening companion — "
+               "not a medical service.")
+
+    st.divider()
+    st.subheader("⚠️ Disclaimer")
+    st.caption("This is not a substitute for professional care. Lumi can't diagnose "
+               "you or advise on medication. Always consult a qualified doctor or "
+               "counsellor.")
+
+    st.divider()
+    st.subheader("🔒 Safety")
+    st.caption("Every message passes through a two-tier risk classifier. Messages "
+               "suggesting crisis are answered with a fixed, reviewed script and "
+               "helpline numbers — the language model is bypassed entirely.")
     if st.button("Delete everything", type="primary", use_container_width=True):
         st.session_state.messages = []
         st.session_state.mem = {"facts": [], "summary": ""}
