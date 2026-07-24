@@ -402,8 +402,8 @@ if not st.session_state.consented:
 # ─────────────────────────────────────────────────────────────────────────────
 # 11. CHAT UI
 # ─────────────────────────────────────────────────────────────────────────────
-st.title("A place to think out loud")
-st.caption("Not a therapist. Not a crisis line. Just somewhere to start.")
+st.title("LUMI AI")
+st.caption("Your very own AI Therapist")
 st.warning("**Need someone now?** " + " · ".join(RESOURCES))
 
 with st.sidebar:
