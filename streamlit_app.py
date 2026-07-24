@@ -1,67 +1,60 @@
-"""
-A place to think out loud — supportive listening companion (Streamlit).
-
-NOT a therapist, NOT a crisis service. A safety layer runs in front of the model.
-Read README.md before deploying. Do not put this in front of real users without
-clinician review of SYSTEM_PROMPT and crisis_reply().
-"""
-import os, re, json, time, datetime, pathlib, traceback
-
 import streamlit as st
-from google import genai
-from google.genai import types
+from groq import Groq
 
 st.set_page_config(page_title="A place to think out loud", page_icon="🌿")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. SETUP
 # ─────────────────────────────────────────────────────────────────────────────
-CHAT_MODEL   = "gemini-3.6-flash"
-SAFETY_MODEL = "gemini-flash-lite-latest"
-
-
 def _get_key():
     try:
-        return st.secrets["GEMINI_API_KEY"]
+        return str(st.secrets["GROQ_API_KEY"]).strip().strip('"').strip("'")
     except Exception:
-        return os.environ.get("GEMINI_API_KEY")
+        return (os.environ.get("GROQ_API_KEY") or "").strip().strip('"').strip("'")
 
 
 @st.cache_resource
 def get_client():
     key = _get_key()
     if not key:
-        st.error("GEMINI_API_KEY is not set. Add it in Settings → Secrets.")
+        st.error("GROQ_API_KEY is not set. Add it in Settings → Secrets.")
         st.stop()
-    return genai.Client(api_key=key)
+    return Groq(api_key=key)
 
 
 gclient = get_client()
-with st.sidebar:
-    st.subheader("Debug")
-    if st.button("Run diagnostic"):
-        k = _get_key() or ""
-        st.write(f"key length: {len(k)}, starts AIza: {k.startswith('AIza')}")
-        try:
-            names = [m.name.replace("models/", "") for m in gclient.models.list()]
-            st.write(f"models visible: {len(names)}")
-        except Exception as e:
-            st.error(f"list failed: {str(e)[:300]}")
-            names = []
-        for m in ["gemini-flash-latest", "gemini-flash-lite-latest",
-                  "gemini-3.6-flash", "gemini-3.1-flash-lite"]:
-            try:
-                r = gclient.models.generate_content(model=m, contents="hi")
-                st.success(f"✓ {m} → {(r.text or '')[:40]}")
-            except Exception as e:
-                st.error(f"✗ {m} → {type(e).__name__}: {str(e)[:250]}")
+
+
+@st.cache_resource
+def pick_models():
+    """Detect what's actually available instead of hardcoding names that go stale."""
+    try:
+        names = [m.id for m in gclient.models.list().data]
+    except Exception:
+        names = []
+
+    def first(prefs, fallback):
+        for p in prefs:
+            for n in names:
+                if p in n and not any(x in n for x in ("whisper", "tts", "guard", "vision")):
+                    return n
+        return fallback
+
+    chat   = first(["llama-3.3-70b", "llama-3.1-70b", "70b", "gpt-oss-120b"],
+                   "llama-3.3-70b-versatile")
+    safety = first(["llama-3.1-8b", "8b-instant", "gemma"], "llama-3.1-8b-instant")
+    return chat, safety
+
+
+CHAT_MODEL, SAFETY_MODEL = pick_models()
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. MODEL ADAPTER — the only code that knows about Gemini
+# 2. MODEL ADAPTER — the only code that knows about Groq
 # ─────────────────────────────────────────────────────────────────────────────
-def _to_gemini(msgs):
-    return [types.Content(role=("model" if m["role"] == "assistant" else "user"),
-                          parts=[types.Part(text=m["content"])])
-            for m in msgs if m.get("content")]
+def _msgs(system, msgs):
+    """Groq takes the system prompt as the first message, not a separate arg."""
+    return [{"role": "system", "content": system}] + [
+        {"role": m["role"], "content": m["content"]} for m in msgs if m.get("content")]
 
 
 def _retry(fn, tries=4):
@@ -69,37 +62,33 @@ def _retry(fn, tries=4):
         try:
             return fn()
         except Exception as e:
-            if not any(x in str(e) for x in ("429", "RESOURCE_EXHAUSTED", "503")) \
+            if not any(x in str(e) for x in ("429", "rate_limit", "503", "overloaded")) \
                or i == tries - 1:
                 raise
             time.sleep(2 ** i)
 
 
 def llm_text(model, system, msgs, max_tokens=800, temperature=1.0):
-    cfg = types.GenerateContentConfig(system_instruction=system,
-                                      max_output_tokens=max_tokens,
-                                      temperature=temperature)
-    r = _retry(lambda: gclient.models.generate_content(
-        model=model, contents=_to_gemini(msgs), config=cfg))
-    return (r.text or "").strip()
+    r = _retry(lambda: gclient.chat.completions.create(
+        model=model, messages=_msgs(system, msgs),
+        max_tokens=max_tokens, temperature=temperature))
+    return (r.choices[0].message.content or "").strip()
 
 
 def llm_stream(model, system, msgs, max_tokens=800, temperature=1.0):
-    """Yields DELTAS — st.write_stream concatenates them itself."""
-    cfg = types.GenerateContentConfig(system_instruction=system,
-                                      max_output_tokens=max_tokens,
-                                      temperature=temperature)
-    for chunk in gclient.models.generate_content_stream(
-            model=model, contents=_to_gemini(msgs), config=cfg):
-        if chunk.text:
-            yield chunk.text
+    """Yields deltas — st.write_stream concatenates them."""
+    stream = _retry(lambda: gclient.chat.completions.create(
+        model=model, messages=_msgs(system, msgs),
+        max_tokens=max_tokens, temperature=temperature, stream=True))
+    for chunk in stream:
+        piece = chunk.choices[0].delta.content
+        if piece:
+            yield piece
 
 
 def llm_json(model, system, msgs, max_tokens=250):
     raw = llm_text(model, system, msgs, max_tokens=max_tokens, temperature=0)
     return json.loads(re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip())
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. PROMPTS & HELPLINES — verify every number before deploying
 # ─────────────────────────────────────────────────────────────────────────────
