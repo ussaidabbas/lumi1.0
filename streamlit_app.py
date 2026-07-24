@@ -16,7 +16,7 @@ st.set_page_config(page_title="A place to think out loud", page_icon="🌿")
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. SETUP
 # ─────────────────────────────────────────────────────────────────────────────
-CHAT_MODEL   = "gemini-3.6-flash"
+CHAT_MODEL   = "gemini-flash-latest"
 SAFETY_MODEL = "gemini-flash-lite-latest"
 
 
